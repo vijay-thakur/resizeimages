@@ -2,7 +2,7 @@
     "Parameters" : {    
       "S3ArtifactBucket" : "test-aircall-artifact",
       "EnvironmentName" : "test",
-      "RepoName" : "nudj-infra",
+      "RepoName" : "Pass Github Repo Name",
       "S3UploadImagesBucket" : "test-aircall-images"
     }
 }
