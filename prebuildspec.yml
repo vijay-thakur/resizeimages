@@ -1,0 +1,47 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 14
+    commands:
+      # Node, NPM, AWS-CLI are preinstalled on this CodeBuild image.
+
+      - apt-get update && apt-get install libssl-dev -y && apt-get install -y -q build-essential curl
+
+      - echo $GIT_BRANCH
+
+      - echo $S3_BUCKET
+
+      # - sudo apt-get update -y && sudo apt-get install -y make apt-transport-https
+
+      # - sudo apt-get install -y jq bash curl file git unzip zip xz-utils wget
+
+      - echo "Current Directory"
+
+      - current_path=$(pwd)
+
+      - echo $current_path
+      
+      - DATE=$(date '+%Y-%m-%d')
+
+
+  build:
+    commands:
+
+    - echo "Build Started"
+    - cd resizecode
+    - ls -lhtr
+    - npm install
+    - zip -r resize-images.zip .
+    - ls -lhtr
+    # - aws s3 ls s3://$S3_BUCKET 
+    # - aws s3 ls s3://$S3_BUCKET | grep resize-images.zip
+    # - |
+    #   if [ $? eq 0 ]; then
+    #     aws s3 mv s3://$S3_BUCKET/resize-images.zip s3://$S3_BUCKET/resize-images-$DATE.zip
+    #   fi
+    - aws s3 cp resize-images.zip s3://$S3_BUCKET/resize-images.zip

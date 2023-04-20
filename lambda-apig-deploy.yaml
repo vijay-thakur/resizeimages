@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: ""
+
+Parameters:
+  S3ArtifactBucket:
+    Description: Initial bucket needed to run the root stack.
+    Default: test-aircaall
+    Type: String
+  S3UploadImagesBucket:
+    Description: Initial bucket needed to run the root stack.
+    Default: test-aircall-images
+    Type: String
+  # GithubOrg:
+  #   Description: Github org containing the repo.
+  #   Type: String
+  # GitBranch:
+  #   Description: Git branch if different than environment name (they should be the same!) develop, staging, production.
+  #   Type: String
+  EnvironmentName:
+    Description: Environment name should equal git branch name. develop, staging, production.
+    Type: String
+    Default: test
+  # CodeStarConnectionArn:
+  #   Description: An ARN created by authorizing Github here https://console.aws.amazon.com/codesuite/settings/connections
+  #   Type: String
+  RepoName:
+    Description: Repository name.
+    Type: String
+    Default: sre
+
+
+Resources:
+
+
+  S3BucketUploadImages:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref S3UploadImagesBucket
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+          - 
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+
+  IAMRole:
+      Type: "AWS::IAM::Role"
+      DependsOn: [ IAMManagedPolicy, S3BucketUploadImages ]
+      Properties:
+          Path: "/service-role/"
+          RoleName: !Sub ${EnvironmentName}-air-lambda-role
+          AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+          MaxSessionDuration: 3600
+          ManagedPolicyArns: 
+            - !Ref IAMManagedPolicy
+
+  # S3Bucket:
+  #     Type: "AWS::S3::Bucket"
+  #     Properties:
+  #         BucketName: "test-aircaall"
+  #         BucketEncryption: 
+  #             ServerSideEncryptionConfiguration: 
+  #               - 
+  #                 ServerSideEncryptionByDefault: 
+  #                     SSEAlgorithm: "AES256"
+  #                 BucketKeyEnabled: true
+
+  IAMManagedPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      ManagedPolicyName: !Sub ${EnvironmentName}-air-lambda--policy
+      Path: "/service-role/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+          -
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+            Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+          -
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - s3:ListStorageLensConfigurations
+              - s3:ListAccessPointsForObjectLambda
+              - s3:GetAccessPoint
+              - s3:PutAccountPublicAccessBlock
+              - s3:GetAccountPublicAccessBlock
+              - s3:ListAllMyBuckets
+              - s3:ListAccessPoints
+              - s3:PutAccessPointPublicAccessBlock
+              - s3:ListJobs
+              - s3:PutStorageLensConfiguration
+              - s3:ListMultiRegionAccessPoints
+              - s3:CreateJob
+            Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+          -
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObjectAcl
+              - s3:GetObject
+              - s3:ListBucketMultipartUploads
+              - s3:ListAllMyBuckets
+              - s3:GetObjectAttributes
+              - s3:ListBucket
+              - s3:PutObjectAcl
+              - s3:ListMultipartUploadParts
+            Resource:
+              - !Sub arn:aws:s3:::${S3UploadImagesBucket},
+              - !Sub arn:aws:s3:::${S3UploadImagesBucket}/*
+              - !Sub arn:aws:s3:::${S3ArtifactBucket},
+              - !Sub arn:aws:s3:::${S3ArtifactBucket}/*
+
+
+  LambdaFunction:
+    Type: "AWS::Lambda::Function"
+    DependsOn: IAMRole
+    Properties:
+      Description: ""
+      Environment: 
+        Variables: 
+          S3_BUCKET: !Ref S3UploadImagesBucket
+      FunctionName: !Sub ${EnvironmentName}-aircall-lambda
+      Handler: "app.lambdaHandler"
+      Architectures: 
+        - "x86_64"
+      Code: 
+        S3Bucket: !Ref S3ArtifactBucket
+        S3Key: resize-images.zip
+      MemorySize: 150
+      Role: !GetAtt IAMRole.Arn
+      Runtime: "nodejs16.x"
+      Timeout: 5
+      TracingConfig: 
+        Mode: "PassThrough"
+      EphemeralStorage: 
+        Size: 512
+
+  ApiGatewayV2Api:
+    Type: "AWS::ApiGatewayV2::Api"
+    DependsOn: LambdaFunction
+    Properties:
+      Name: !Sub ${EnvironmentName}-aircall-api
+      ApiKeySelectionExpression: "$request.header.x-api-key"
+      ProtocolType: "HTTP"
+      RouteSelectionExpression: "$request.method $request.path"
+      DisableExecuteApiEndpoint: false
+
+  ApiGatewayV2Integration:
+    Type: "AWS::ApiGatewayV2::Integration"
+    DependsOn: ApiGatewayV2Api
+    Properties:
+      ApiId: !Ref ApiGatewayV2Api
+      ConnectionType: "INTERNET"
+      IntegrationMethod: "POST"
+      IntegrationType: "AWS_PROXY"
+      IntegrationUri: !GetAtt LambdaFunction.Arn
+      TimeoutInMillis: 30000
+      PayloadFormatVersion: "1.0"
+
+  ApiGatewayV2Route:
+    Type: "AWS::ApiGatewayV2::Route"
+    DependsOn: ApiGatewayV2Integration
+    Properties:
+      ApiId: !Ref ApiGatewayV2Api
+      ApiKeyRequired: false
+      AuthorizationType: "NONE"
+      RequestParameters: {}
+      RouteKey: "POST /image"
+      Target: !Sub "integrations/${ApiGatewayV2Integration}"
+
+  ApiGatewayV2Deployment:
+    Type: "AWS::ApiGatewayV2::Deployment"
+    DependsOn: ApiGatewayV2Route
+    Properties:
+      ApiId: !Ref ApiGatewayV2Api
+      Description: "Automatic deployment triggered by changes to the Api configuration"
+
+  ApiGatewayV2Stage:
+    Type: "AWS::ApiGatewayV2::Stage"
+    DependsOn: ApiGatewayV2Deployment
+    Properties:
+      StageName: "$default"
+      StageVariables: {}
+      ApiId: !Ref ApiGatewayV2Api
+      DeploymentId: !Ref ApiGatewayV2Deployment
+      RouteSettings: {}
+      DefaultRouteSettings: 
+        DetailedMetricsEnabled: false
+      AutoDeploy: true
+
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Join [
+        "", [
+          "arn:aws:execute-api:", 
+          {"Ref": "AWS::Region"}, ":", 
+          {"Ref": "AWS::AccountId"}, ":", 
+          !Ref ApiGatewayV2Api, "/*/*/image"
+          ]
+        ] 
+
+
+Outputs:
+  ApiGatewayEndpoint:
+    Value: !GetAtt ApiGatewayV2Api.ApiEndpoint
+  # S3Bucket:
+  #   Value: !Ref S3Bucket

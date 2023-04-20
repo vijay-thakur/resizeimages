@@ -1,0 +1,39 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      # Node, NPM, AWS-CLI are preinstalled on this CodeBuild image.
+
+      #- apt-get update && apt-get install libssl-dev -y && apt-get install -y -q build-essential curl
+
+      - echo $GIT_BRANCH
+
+      - echo $S3_BUCKET
+
+      - echo $LAMBDA_NAME
+
+      # - sudo apt-get update -y && sudo apt-get install -y make apt-transport-https
+
+      # - sudo apt-get install -y jq bash curl file git unzip zip xz-utils wget
+
+      - echo "Current Directory"
+
+      - current_path=$(pwd)
+
+      - echo $current_path
+      
+      - DATE=$(date '+%Y-%m-%d')
+
+
+  build:
+    commands:
+
+    - echo "Updating Lambda Function Code"
+
+    - ls -lhtr
+    
+    - aws lambda update-function-code \--function-name  $LAMBDA_NAME \--s3-bucket $S3_BUCKET --s3-key resize-images.zip

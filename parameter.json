@@ -1,0 +1,38 @@
+[
+	{
+		"ParameterValue": "test",
+		"ParameterKey": "EnvironmentName"
+	},
+	{
+		"ParameterValue": "PASS GITHUB REPO NAME",
+		"ParameterKey": "RepoName"
+	},
+	{
+		"ParameterValue": "PAAS Code Star Connection ARN",
+		"ParameterKey": "CodeStarConnectionArn"
+	},
+	{
+		"ParameterValue": "test",
+		"ParameterKey": "GitBranch"
+	},
+	{
+		"ParameterValue": "lambda-apig-deploy.yaml",
+		"ParameterKey": "TemplateFileName"
+	},
+	{
+		"ParameterValue": "test-size-stack",
+		"ParameterKey": "StackName"
+	},
+	{
+		"ParameterValue": "lambda-apig.json",
+		"ParameterKey": "StackConfig"
+	},
+	{
+		"ParameterValue": "PASS GITHUB ORG",
+		"ParameterKey": "GithubOrg"
+	},
+	{
+		"ParameterValue": "test-aircall-artifact",
+		"ParameterKey": "S3ArtifactBucket"
+	}
+]

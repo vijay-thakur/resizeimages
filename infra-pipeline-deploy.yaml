@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: CodePipeline and CodeBuild 
+
+Parameters:
+  # PipeLineRole:
+  #   Type: String
+  #   Default: arn:aws:iam::123834662147:role/role-example
+  S3ArtifactBucket:
+    Type: String
+  CodeStarConnectionArn:
+    Type: String
+  RepoName:
+    Description: Repository name.
+    Type: String
+  GithubOrg:
+    Description: Github org containing the repo.
+    Type: String
+  GitBranch:
+    Description: Git branch if different than environment name (they should be the same!) develop, staging, production.
+    Type: String
+  EnvironmentName:
+    Description: Environment name should equal git branch name. develop, staging, production.
+    Type: String
+  TemplateFileName:
+    Default: lambda-apig-deploy.yaml
+    Description: The file name of the WordPress template
+    Type: String
+  StackName:
+    Default: test-size-stack
+    Description: A name for the production WordPress stack
+    Type: String
+  StackConfig:
+    Default: lambda-apig.json
+    Description: The configuration file name for the production WordPress stack
+    Type: String
+  # VpcChangeSetName:
+  #   Default: UpdatePreview-Vpc-Stack
+  #   Description: A name for the VPC stack change set
+  #   Type: String
+
+
+
+  # SourceS3Key:
+  #   Default: infra.zip
+  #   Description: The file name of the source artifact, such as myfolder/myartifact.zip
+  #   Type: String
+
+ 
+  # If VPC required
+  # ParentVPCStack:
+  #   Description: 'Provide Stack name of parent VPC stack based on VPC-3AZs yaml template. Refer Cloudformation dashboard in AWS Console to get this.'
+  #   Type: String
+  #   MinLength: '1'
+  #   MaxLength: '128'
+  #   AllowedPattern: '^[a-zA-Z]+[0-9a-zA-Z\-]*$'
+
+Resources:
+
+  PipelineIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub Pipeline-${EnvironmentName}-aircall-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+                - codepipeline.amazonaws.com
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  PipelineIamPolicy:
+    Type: AWS::IAM::Policy
+    DependsOn: PipelineIamRole
+    Properties:
+      PolicyName: !Sub Pipeline-${EnvironmentName}-aircall-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action: "*"
+            Resource: "*"
+      Roles:
+        -
+          !Ref PipelineIamRole
+
+  S3Bucketartifact:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref S3ArtifactBucket
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+          - 
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+
+  CodeBuildAir:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${EnvironmentName}-${RepoName}
+      ServiceRole: !GetAtt PipelineIamRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/standard:5.0
+        EnvironmentVariables:
+          - Name: GIT_BRANCH
+            Value: !Ref GitBranch
+          - Name: S3_BUCKET
+            Value: !Ref S3ArtifactBucket
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: prebuildspec.yml
+      TimeoutInMinutes: 10
+
+
+  CodeBuildUpdateLambda:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${EnvironmentName}-${RepoName}-lambda
+      ServiceRole: !GetAtt PipelineIamRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/standard:5.0
+        EnvironmentVariables:
+          - Name: GIT_BRANCH
+            Value: !Ref GitBranch
+          - Name: S3_BUCKET
+            Value: !Ref S3ArtifactBucket
+          - Name: LAMBDA_NAME
+            Value: !Sub ${EnvironmentName}-aircall-lambda
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: postbuildspec.yml
+      TimeoutInMinutes: 10
+
+
+      # If VPC required
+      # VpcConfig:
+      #   VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      #   Subnets: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetsPrivate'}]
+      #   SecurityGroupIds: !Split [',', {'Fn::ImportValue': !Sub '${ParentVPCStack}-SecretRotationLambdaSecurityGroup'}]
+  
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt PipelineIamRole.Arn
+      Name: !Sub ${EnvironmentName}-${RepoName}-deploy
+      Stages:
+        -
+          Name: Source
+          Actions:
+            -
+              Name: TemplateSource
+              ActionTypeId:
+                Version: '1'
+                Owner: AWS
+                Category: Source
+                Provider: CodeStarSourceConnection
+              OutputArtifacts:
+                - Name: TemplateSource
+              RunOrder: 1
+              Configuration:
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Sub "${GithubOrg}/${RepoName}"
+                BranchName: !Sub ${GitBranch}
+        -
+          Name: ZipLambdaCode
+          Actions:
+            - 
+              Name: CodeBuildAir
+              RunOrder: 2
+              InputArtifacts:
+                - Name: TemplateSource
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildAir
+        -
+          Name: ManualApprovalStack
+          Actions:
+            -
+              Name: ManualApprove
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: '1'
+              RunOrder: 3
+        -
+          Name: DeployLambdaAndApiGateway
+          Actions:
+            -
+              Name: CreateUpdate
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              InputArtifacts:
+                - Name: TemplateSource
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                RoleArn: !GetAtt PipelineIamRole.Arn
+                StackName: !Ref StackName
+                TemplateConfiguration: !Sub "TemplateSource::${StackConfig}"
+                TemplatePath: !Sub "TemplateSource::${TemplateFileName}"
+              RunOrder: 4
+        -
+          Name: UpdateLambdaCode
+          Actions:
+            - 
+              Name: CodeBuildUpdateLambdaFunction
+              RunOrder: 5
+              InputArtifacts:
+                - Name: TemplateSource
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildUpdateLambda
+
+
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3ArtifactBucket

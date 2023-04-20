@@ -1,0 +1,8 @@
+{
+    "Parameters" : {    
+      "S3ArtifactBucket" : "test-aircall-artifact",
+      "EnvironmentName" : "test",
+      "RepoName" : "nudj-infra",
+      "S3UploadImagesBucket" : "test-aircall-images"
+    }
+}
