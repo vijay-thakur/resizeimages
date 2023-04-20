@@ -194,17 +194,6 @@ Resources:
               Configuration:
                 ProjectName: !Ref CodeBuildAir
         -
-          Name: ManualApprovalStack
-          Actions:
-            -
-              Name: ManualApprove
-              ActionTypeId:
-                Category: Approval
-                Owner: AWS
-                Provider: Manual
-                Version: '1'
-              RunOrder: 3
-        -
           Name: DeployLambdaAndApiGateway
           Actions:
             -
