@@ -4,7 +4,7 @@
 
 2. Configure CodeStarConnection to integrate your codepipeline with your Github account.
 
-3. Push your code to your GITHUB repo.
+3. Push this code to your GITHUB repo.
 
 4. Update Both **parameter.json** and **lambda-apig.json** file with your own values.
 
