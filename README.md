@@ -17,8 +17,8 @@
 6. Once above stack deployed Successfully. Go to Codepipeline console and you can see that pipeline already triggered. Pipeline will build and deploy Lambda function and apigateway.
 
 
-```
-curl --location --request POST 'http://<API-GAATEWAY ENDPOINT>/image' \
---form 'file=@img.jpg' \
---form 's3Key=img.jpg'
-```
+	```
+		curl --location --request POST 'http://<API-GAATEWAY ENDPOINT>/image' \
+		--form 'file=@img.jpg' \
+		--form 's3Key=img.jpg'
+	```
